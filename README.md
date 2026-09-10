@@ -1,7 +1,61 @@
-# sistema_de_wishlist
+# Sistema de Wishlist de Jogos - API REST
+
+## Equipe
+* Victor Lins Gurgel do Amaral
+* Lorenzo Barros Calheiros Pinheiro
+* Gabriel De Sousa Nobre
 
 ## Descrição do Projeto
+
 Desenvolver um sistema básico de wishlist de jogos, onde os usuários podem adicionar jogos que desejam comprar ou jogar no futuro. O sistema permitirá que os usuários criem uma lista de desejos personalizada, visualizem os jogos adicionados e removam jogos da lista conforme necessário.
+
+## Tecnologias Utilizadas
+* **Linguagem:** Python
+* **Framework Web:** FastAPI
+* **ORM & Banco de Dados:** SQLAlchemy e MySQL (PyMySQL)
+* **Servidor ASGI:** Uvicorn
+* **Validação de Dados:** Pydantic
+
+## Como Executar Localmente
+
+1. **Clone o repositório:**
+
+```bash
+   git clone <link-do-seu-repositorio>
+   cd <nome-da-pasta>
+```
+
+2. **Instale as dependências:**
+
+```bash
+pip install fastapi uvicorn sqlalchemy pymysql python-dotenv pydantic
+
+```
+
+
+3. **Configure o Banco de Dados:**
+* Crie um banco de dados no MySQL Workbench chamado `wishlist`.
+* Crie um arquivo `.env` na raiz do projeto com as seguintes credenciais:
+```env
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=seu_usuario
+DB_PASSWORD=sua_senha
+DB_NAME=wishlist
+
+```
+
+
+
+
+4. **Inicie o servidor:**
+```bash
+python main.py
+
+```
+
+
+A documentação interativa (Swagger UI) estará disponível em: `http://127.0.0.1:8000/docs`
 
 ## Banco de Dados
 Banco MySQL hospedado no Aiven. A estrutura do banco é a seguinte:
@@ -46,3 +100,4 @@ CRUD de usuários, jogos e wishlist.
   - `POST /wishlist` - Adicionar um jogo à wishlist de um usuário
   - `GET /wishlist/{user_id}` - Listar todos os jogos na wishlist de um usuário específico
   - `DELETE /wishlist/{id}` - Remover um jogo da wishlist
+
