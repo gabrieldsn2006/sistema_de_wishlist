@@ -21,8 +21,8 @@ Desenvolver um sistema básico de wishlist de jogos, onde os usuários podem adi
 1. **Clone o repositório:**
 
 ```bash
-   git clone <link-do-seu-repositorio>
-   cd <nome-da-pasta>
+   git clone https://github.com/gabrieldsn2006/sistema_de_wishlist
+   cd src
 ```
 
 2. **Instale as dependências:**
