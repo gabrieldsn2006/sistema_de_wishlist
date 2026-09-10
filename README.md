@@ -20,47 +20,37 @@ Desenvolver um sistema básico de wishlist de jogos, onde os usuários podem adi
 | Servidor ASGI | Uvicorn |
 | Validação de Dados | Pydantic |
 
-## Como Executar Localmente
+## Ambiente Deployado
 
-### 1. Clone o repositório
+### API
 
-```bash
-git clone https://github.com/gabrieldsn2006/sistema_de_wishlist
-cd src
-```
+O servidor está hospedado no Render e pode ser acessado pela URL pública:
 
-### 2. Instale as dependências
+`https://sistema-de-wishlist.onrender.com`
 
-```bash
-pip install fastapi uvicorn sqlalchemy pymysql python-dotenv pydantic
-```
+Documentação interativa:
 
-### 3. Configure o Banco de Dados
+- Swagger UI: `https://sistema-de-wishlist.onrender.com/docs`
+- ReDoc: `https://sistema-de-wishlist.onrender.com/redoc`
 
-- Crie um banco de dados no MySQL Workbench chamado `wishlist`.
-- Crie um arquivo `.env` na raiz do projeto com as seguintes credenciais:
+### Banco de Dados
+
+O banco de dados MySQL está hospedado na Aiven. As configurações são definidas nas variáveis de ambiente do serviço deployado:
 
 ```env
-DB_HOST=localhost
-DB_PORT=3306
-DB_USER=seu_usuario
-DB_PASSWORD=sua_senha
+DB_HOST=host_do_banco
+DB_PORT=porta_do_banco
+DB_USER=usuario_do_banco
+DB_PASSWORD=senha_do_banco
 DB_NAME=wishlist
+DB_SSL_CA=ca.pem
 ```
-
-### 4. Inicie o servidor
-
-```bash
-python main.py
-```
-
-A API estará disponível na base URL: `http://127.0.0.1:8000`
 
 ---
 
 ## Banco de Dados
 
-O projeto utiliza um banco de dados MySQL que pode ser executado localmente ou em nuvem (como a Aiven). A estrutura do banco é a seguinte:
+O projeto utiliza um banco de dados MySQL hospedado na Aiven. A estrutura do banco é a seguinte:
 
 ### Tabela `users`
 
@@ -106,29 +96,29 @@ CRUD de usuários, jogos e wishlist.
 
 | Método | Rota | Descrição |
 |---|---|---|
-| POST | `/users` | Criar um novo usuário |
-| GET | `/users` | Listar todos os usuários |
-| GET | `/users/{id}` | Obter detalhes de um usuário específico |
-| PUT | `/users/{id}` | Atualizar informações de um usuário |
-| DELETE | `/users/{id}` | Deletar um usuário |
+| POST | `https://sistema-de-wishlist.onrender.com/users` | Criar um novo usuário |
+| GET | `https://sistema-de-wishlist.onrender.com/users` | Listar todos os usuários |
+| GET | `https://sistema-de-wishlist.onrender.com/users/{id}` | Obter detalhes de um usuário específico |
+| PUT | `https://sistema-de-wishlist.onrender.com/users/{id}` | Atualizar informações de um usuário |
+| DELETE | `https://sistema-de-wishlist.onrender.com/users/{id}` | Deletar um usuário |
 
 ### Endpoints de jogos
 
 | Método | Rota | Descrição |
 |---|---|---|
-| POST | `/games` | Adicionar um novo jogo |
-| GET | `/games` | Listar todos os jogos |
-| GET | `/games/{id}` | Obter detalhes de um jogo específico |
-| PUT | `/games/{id}` | Atualizar informações de um jogo |
-| DELETE | `/games/{id}` | Deletar um jogo |
+| POST | `https://sistema-de-wishlist.onrender.com/games` | Adicionar um novo jogo |
+| GET | `https://sistema-de-wishlist.onrender.com/games` | Listar todos os jogos |
+| GET | `https://sistema-de-wishlist.onrender.com/games/{id}` | Obter detalhes de um jogo específico |
+| PUT | `https://sistema-de-wishlist.onrender.com/games/{id}` | Atualizar informações de um jogo |
+| DELETE | `https://sistema-de-wishlist.onrender.com/games/{id}` | Deletar um jogo |
 
 ### Endpoints de wishlist
 
 | Método | Rota | Descrição |
 |---|---|---|
-| POST | `/wishlist` | Adicionar um jogo à wishlist de um usuário |
-| GET | `/wishlist/{user_id}` | Listar todos os jogos na wishlist de um usuário específico |
-| DELETE | `/wishlist/{id}` | Remover um jogo da wishlist |
+| POST | `https://sistema-de-wishlist.onrender.com/wishlist` | Adicionar um jogo à wishlist de um usuário |
+| GET | `https://sistema-de-wishlist.onrender.com/wishlist/{user_id}` | Listar todos os jogos na wishlist de um usuário específico |
+| DELETE | `https://sistema-de-wishlist.onrender.com/wishlist/{id}` | Remover um jogo da wishlist |
 
 ---
 
@@ -143,7 +133,7 @@ Para testar a API, você pode utilizar qualquer programa de testes de API (como 
 
 ### Exemplos de Corpo da Requisição (Body - JSON)
 
-**1. Criando um Usuário (`POST /users`)**
+**1. Criando um Usuário (`POST https://sistema-de-wishlist.onrender.com/users`)**
 
 ```bash
 {
@@ -155,7 +145,7 @@ Para testar a API, você pode utilizar qualquer programa de testes de API (como 
 ```
 *Retorno esperado: Status `201 Created` com os dados gerados.*
 
-**2. Atualizando um Usuário (`PUT /users/{id}`)**
+**2. Atualizando um Usuário (`PUT https://sistema-de-wishlist.onrender.com/users/{id}`)**
 
 ```bash
 {
@@ -164,7 +154,7 @@ Para testar a API, você pode utilizar qualquer programa de testes de API (como 
 ```
 *Retorno esperado: Status `200 OK` com os dados atualizados.*
 
-**3. Adicionando um Jogo (`POST /games`)**
+**3. Adicionando um Jogo (`POST https://sistema-de-wishlist.onrender.com/games`)**
 
 ```bash
 {
@@ -176,7 +166,7 @@ Para testar a API, você pode utilizar qualquer programa de testes de API (como 
 ```
 *Retorno esperado: Status `201 Created`.*
 
-**4. Adicionando um Jogo à Wishlist (`POST /wishlist`)**
+**4. Adicionando um Jogo à Wishlist (`POST https://sistema-de-wishlist.onrender.com/wishlist`)**
 
 ```bash
 {
@@ -186,4 +176,4 @@ Para testar a API, você pode utilizar qualquer programa de testes de API (como 
 ```
 *Retorno esperado: Status `201 Created`.*
 
-Para os endpoints do tipo `GET` e `DELETE`, não é necessário enviar um corpo JSON; basta acessar a rota especificando o ID diretamente na URL (exemplo: `DELETE http://127.0.0.1:8000/games/1`).
+Para os endpoints do tipo `GET` e `DELETE`, não é necessário enviar um corpo JSON; basta acessar a rota especificando o ID diretamente na URL (exemplo: `DELETE https://sistema-de-wishlist.onrender.com/games/1`).
