@@ -58,7 +58,7 @@ python main.py
 A documentação interativa (Swagger UI) estará disponível em: `http://127.0.0.1:8000/docs`
 
 ## Banco de Dados
-Banco MySQL hospedado no Aiven. A estrutura do banco é a seguinte:
+O projeto utiliza um banco de dados MySQL que pode ser executado localmente ou em nuvem (como a Aiven). A estrutura do banco é a seguinte:
 - Tabela `users`:
   - `id` (int, primary key, auto-increment)
   - `username` (varchar)
