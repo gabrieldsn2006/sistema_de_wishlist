@@ -117,7 +117,8 @@ CRUD de usuários, jogos e wishlist.
 | Método | Rota | Descrição |
 |---|---|---|
 | POST | `https://sistema-de-wishlist.onrender.com/wishlist` | Adicionar um jogo à wishlist de um usuário |
-| GET | `https://sistema-de-wishlist.onrender.com/wishlist/{user_id}` | Listar todos os jogos na wishlist de um usuário específico |
+| GET | `https://sistema-de-wishlist.onrender.com/wishlist/{id}` | Obter um item específico da wishlist |
+| GET | `https://sistema-de-wishlist.onrender.com/wishlist/by-user/{id}` | Listar todos os jogos na wishlist de um usuário específico |
 | DELETE | `https://sistema-de-wishlist.onrender.com/wishlist/{id}` | Remover um jogo da wishlist |
 
 ---

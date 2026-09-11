@@ -17,11 +17,19 @@ def add_to_wishlist(item: schemas.WishlistCreate, db: Session = Depends(get_db))
     return controllers.add_to_wishlist(db, item)
 
 
-@router.get("/{user_id}", response_model=list[schemas.WishlistResponse])
-def list_wishlist(user_id: int, db: Session = Depends(get_db)):
-    if not controllers.get_user(db, user_id):
+@router.get("/by-user/{id}", response_model=list[schemas.WishlistResponse])
+def list_wishlist_by_user(id: int, db: Session = Depends(get_db)):
+    if not controllers.get_user(db, id):
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
-    return controllers.list_wishlist_by_user(db, user_id)
+    return controllers.list_wishlist_by_user(db, id)
+
+
+@router.get("/{id}", response_model=schemas.WishlistResponse)
+def get_wishlist_item(id: int, db: Session = Depends(get_db)):
+    item = controllers.get_wishlist_item(db, id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item da wishlist não encontrado")
+    return item
 
 
 @router.delete("/{id}", status_code=200)
