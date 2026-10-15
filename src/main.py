@@ -3,7 +3,7 @@ from fastapi import FastAPI
 
 import models
 from database import Base, engine
-from routers import games, users, wishlist
+from routers import auth, games, users, wishlist
 
 # Cria as tabelas no banco caso ainda não existam
 Base.metadata.create_all(bind=engine)
@@ -20,6 +20,7 @@ async def read_root():
     return {"message": "Wishlist API no ar"}
 
 
+app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(games.router)
 app.include_router(wishlist.router)

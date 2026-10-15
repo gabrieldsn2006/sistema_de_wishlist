@@ -26,8 +26,15 @@ class UserResponse(BaseModel):
     username: str
     email: str
     phone: Optional[str] = None
+    role: str
     created_at: Optional[date] = None
     last_update: Optional[date] = None
+
+
+# ---------- Auth ----------
+class LoginRequest(BaseModel):
+    email: str
+    password: str
 
 
 # ---------- Games ----------
