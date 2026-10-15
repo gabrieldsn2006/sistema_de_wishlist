@@ -44,7 +44,10 @@ DB_USER=usuario_do_banco
 DB_PASSWORD=senha_do_banco
 DB_NAME=wishlist
 DB_SSL_CA=ca.pem
+SECRET_KEY=chave_secreta_dos_cookies
 ```
+
+A autenticação está documentada em [docs/autenticacao.md](docs/autenticacao.md).
 
 ---
 

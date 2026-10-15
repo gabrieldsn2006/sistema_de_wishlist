@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 
 import models
 import schemas
+from security import hash_password
 
 
 # ---------- Users ----------
@@ -13,8 +14,14 @@ def get_user(db: Session, user_id: int):
     return db.query(models.User).filter(models.User.id == user_id).first()
 
 
+def get_user_by_email(db: Session, email: str):
+    return db.query(models.User).filter(models.User.email == email).first()
+
+
 def create_user(db: Session, data: schemas.UserCreate):
-    user = models.User(**data.model_dump())
+    values = data.model_dump()
+    values["password"] = hash_password(values["password"])
+    user = models.User(**values)
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -25,7 +32,11 @@ def update_user(db: Session, user_id: int, data: schemas.UserUpdate):
     user = get_user(db, user_id)
     if not user:
         return None
-    for field, value in data.model_dump(exclude_unset=True).items():
+    values = data.model_dump(exclude_unset=True)
+    if values.get("password"):
+        values["password"] = hash_password(values["password"])
+        user.session_version += 1  # trocar a senha derruba as sessões abertas
+    for field, value in values.items():
         setattr(user, field, value)
     db.commit()
     db.refresh(user)
