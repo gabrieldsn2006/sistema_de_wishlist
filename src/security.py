@@ -22,7 +22,7 @@ SESSION_MAX_AGE = 60 * 60 * 8  # 8 horas
 
 # Etapas da sessão guardadas no cookie
 STAGE_ACTIVE = "active"
-STAGE_PENDING = "pending"  # reservado para o 2FA por SMS (ver docs/autenticacao.md)
+STAGE_PENDING = "pending"  # senha ok, falta o código do SMS
 
 password_hash = PasswordHash.recommended()  # Argon2
 serializer = URLSafeTimedSerializer(SECRET_KEY, salt="wishlist-session")

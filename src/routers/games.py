@@ -2,14 +2,21 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 import controllers
+import models
 import schemas
 from database import get_db
+from security import require_admin
 
+# Consulta do catálogo é pública; alterar o catálogo é só para admin
 router = APIRouter(prefix="/games", tags=["games"])
 
 
 @router.post("", response_model=schemas.GameResponse, status_code=201)
-def create_game(game: schemas.GameCreate, db: Session = Depends(get_db)):
+def create_game(
+    game: schemas.GameCreate,
+    admin: models.User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
     return controllers.create_game(db, game)
 
 
@@ -27,7 +34,12 @@ def get_game(id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{id}", response_model=schemas.GameResponse)
-def update_game(id: int, game: schemas.GameUpdate, db: Session = Depends(get_db)):
+def update_game(
+    id: int,
+    game: schemas.GameUpdate,
+    admin: models.User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
     updated = controllers.update_game(db, id, game)
     if not updated:
         raise HTTPException(status_code=404, detail="Jogo não encontrado")
@@ -35,7 +47,11 @@ def update_game(id: int, game: schemas.GameUpdate, db: Session = Depends(get_db)
 
 
 @router.delete("/{id}", status_code=200)
-def delete_game(id: int, db: Session = Depends(get_db)):
+def delete_game(
+    id: int,
+    admin: models.User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
     deleted = controllers.delete_game(db, id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Jogo não encontrado")

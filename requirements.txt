@@ -17,3 +17,7 @@ uvicorn==0.52.4
 PyMySQL==1.1.1
 pwdlib[argon2]==0.3.1
 itsdangerous==2.2.0
+requests==2.34.2
+certifi==2026.7.22
+charset-normalizer==3.5.2
+urllib3==2.8.0

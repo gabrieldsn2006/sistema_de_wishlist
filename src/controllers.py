@@ -43,6 +43,13 @@ def update_user(db: Session, user_id: int, data: schemas.UserUpdate):
     return user
 
 
+def update_user_role(db: Session, user: models.User, role: str):
+    user.role = role
+    db.commit()
+    db.refresh(user)
+    return user
+
+
 def delete_user(db: Session, user_id: int):
     user = get_user(db, user_id)
     if not user:
@@ -94,20 +101,33 @@ def list_wishlist_by_user(db: Session, user_id: int):
     return db.query(models.Wishlist).filter(models.Wishlist.user_id == user_id).all()
 
 
-def get_wishlist_item(db: Session, wishlist_id: int):
-    return db.query(models.Wishlist).filter(models.Wishlist.id == wishlist_id).first()
+def get_wishlist_item(db: Session, wishlist_id: int, user_id: int):
+    """Só encontra o item se ele pertencer ao usuário informado."""
+    return (
+        db.query(models.Wishlist)
+        .filter(models.Wishlist.id == wishlist_id, models.Wishlist.user_id == user_id)
+        .first()
+    )
 
 
-def add_to_wishlist(db: Session, data: schemas.WishlistCreate):
-    item = models.Wishlist(**data.model_dump())
+def find_in_wishlist(db: Session, user_id: int, game_id: int):
+    return (
+        db.query(models.Wishlist)
+        .filter(models.Wishlist.user_id == user_id, models.Wishlist.game_id == game_id)
+        .first()
+    )
+
+
+def add_to_wishlist(db: Session, user_id: int, data: schemas.WishlistCreate):
+    item = models.Wishlist(user_id=user_id, game_id=data.game_id)
     db.add(item)
     db.commit()
     db.refresh(item)
     return item
 
 
-def remove_from_wishlist(db: Session, wishlist_id: int):
-    item = get_wishlist_item(db, wishlist_id)
+def remove_from_wishlist(db: Session, wishlist_id: int, user_id: int):
+    item = get_wishlist_item(db, wishlist_id, user_id)
     if not item:
         return None
     db.delete(item)

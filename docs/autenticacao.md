@@ -1,128 +1,128 @@
-# Autenticação — divisão do trabalho
+# Autenticação e autorização
 
 Requisito do professor: **sem OAuth2 e sem Bearer Token**.
 
-Solução escolhida:
+| Peça | Solução |
+|---|---|
+| Senha | Hash **Argon2** (`pwdlib`). Senhas antigas em texto puro são convertidas no primeiro login. |
+| Segundo fator | Código de 6 dígitos por **SMS** (OTP), enviado pelo [Twilio Verify](https://www.twilio.com/docs/verify) (ou, como alternativa, pelo [textbee.dev](https://textbee.dev)). |
+| Sessão | **Cookie assinado** (`itsdangerous`) com `{uid, sv, stage}`. Nada fica guardado no servidor, então a API continua **stateless**. |
+| Revogação | `session_version` no usuário. Incrementar o número invalida todos os cookies antigos (logout de todos os dispositivos, troca de senha). |
+| Autorização | Papéis `admin` e `user` (coluna `role`). |
 
-- **Senha com hash Argon2** (`pwdlib`).
-- **Sessão em cookie assinado** (`itsdangerous`) — a API continua **stateless**: nada de sessão guardada no servidor, o cookie carrega `{uid, sv, stage}` assinado com a `SECRET_KEY`.
-- **2FA por SMS** com código de uso único (OTP), enviado por um celular Android via [textbee.dev](https://textbee.dev) (grátis, usa o chip do celular).
-- **`session_version`** no usuário: incrementar esse número invalida todos os cookies antigos (logout de todos os dispositivos, troca de senha).
-- **Dois papéis** (coluna `role` em `users`):
+---
 
-  | Papel | Pode |
-  |---|---|
-  | `admin` | Adicionar, editar e remover jogos do catálogo |
-  | `user` | Adicionar e remover jogos da própria wishlist |
+## Fluxo de login
 
-  Todo cadastro pelo `POST /users` nasce como `user` (o campo `role` não é aceito no corpo, senão qualquer um viraria admin). Para criar um admin, rodar no banco:
+```
+POST /auth/login    {email, password}          → 200 + cookie "pendente" + SMS com o código
+POST /auth/verify   {code}           + cookie  → 200 + cookie "ativo"
+GET  /wishlist                       + cookie  → 200
+POST /auth/logout                              → 200 (apaga o cookie)
+```
+
+- Com o cookie **pendente**, toda rota protegida responde `401 Verificação pendente`.
+- O código vale **5 minutos** e aceita **5 tentativas** (depois, `429`). É de uso único: depois de aceito, é apagado.
+- Com o **Twilio Verify**, quem gera e confere o código é o Twilio; a API só guarda a validade e as tentativas. Com o textbee ou no `SMS_DEV_MODE`, a API gera o código e guarda só o hash (`otp_hash`), nunca o texto puro.
+- Fazer o login de novo gera um código novo e zera as tentativas.
+
+## Papéis
+
+| Papel | Pode |
+|---|---|
+| `admin` | Adicionar, editar e remover jogos; listar usuários; alterar o papel de outros usuários |
+| `user` | Adicionar, listar e remover jogos da **própria** wishlist |
+
+- Todo cadastro pelo `POST /users` cria um `user`. O corpo não aceita `role`, senão qualquer um viraria admin.
+- O primeiro admin é criado no banco:
   ```sql
   UPDATE users SET role = 'admin' WHERE email = 'admin@email.com';
   ```
+  Depois disso, um admin promove outros pelo `PATCH /users/{id}/role`. Um admin não pode alterar o próprio papel, para não ficar sem nenhum admin por engano.
+- O `user_id` da wishlist vem sempre da sessão. Itens de outros usuários respondem `404`, para não revelar que existem.
+- Cada usuário só edita a própria conta (`PUT /users/{id}`). Ver e apagar contas: o próprio usuário ou um admin.
+
+## Respostas de erro
+
+| Situação | Status |
+|---|---|
+| Sem cookie, cookie adulterado, expirado ou revogado | `401` |
+| Sessão pendente (falta o código do SMS) | `401` |
+| Código do SMS errado ou expirado | `401` |
+| Muitas tentativas de código | `429` |
+| Logado, mas sem permissão para a rota | `403` |
+| Falha no envio do SMS | `503` |
 
 ---
 
-## Parte 1 — Base da autenticação ✅ (feita)
-
-- `src/security.py`: hash/verificação de senha, criação e leitura do cookie, dependências `get_current_user`, `require_admin` e `require_user`.
-- `src/routers/auth.py`: `POST /auth/login`, `POST /auth/logout`, `POST /auth/logout-all`, `GET /auth/me`.
-- `controllers.create_user` / `update_user` gravam a senha com hash. Usuários antigos com senha em texto puro são migrados para Argon2 automaticamente no primeiro login.
-- `migrations/001_auth.sql`: colunas `session_version` e `role` em `users`.
-
-### Configuração necessária (todos)
+## Configuração
 
 1. `pip install -r requirements.txt`
-2. Rodar `migrations/001_auth.sql` no banco da Aiven (uma vez só).
-3. No `.env` (e nas variáveis do Render):
+2. Rodar no banco da Aiven, na ordem e uma vez só:
+   - `migrations/001_auth.sql` (`session_version` e `role`)
+   - `migrations/002_otp.sql` (campos do código do SMS)
+3. Variáveis no `.env` e no Render:
    ```env
    SECRET_KEY=<gerar com: python -c "import secrets; print(secrets.token_hex(32))">
-   COOKIE_SECURE=false   # só no ambiente local (http). No Render deixar true ou omitir.
+   SMS_PROVIDER=twilio
+   TWILIO_ACCOUNT_SID=<Account SID do painel do Twilio>
+   TWILIO_AUTH_TOKEN=<Auth Token do painel do Twilio>
+   TWILIO_VERIFY_SERVICE_SID=<SID do Verify Service, começa com VA>
+   ```
+   Só no ambiente local:
+   ```env
+   COOKIE_SECURE=false   # o cookie Secure não é enviado em http
+   SMS_DEV_MODE=true     # o código aparece no log do servidor em vez de ir por SMS
    ```
 
-### Como usar nas rotas
+### Twilio Verify (provedor padrão)
+
+1. Criar uma conta em twilio.com (não pede cartão).
+2. No Console, copiar o **Account SID** e o **Auth Token**.
+3. Criar um **Verify Service** (Console → Verify → Services, ou pela API) e copiar o SID dele, que começa com `VA`.
+4. No trial, o código só chega em números verificados (o número usado no cadastro já é verificado; dá para adicionar até 5) e só no país do cadastro.
+
+Limites do trial (30 dias): **40 verificações grátis**. Uma verificação só é descontada quando o código é confirmado com sucesso. Para o dia a dia, usar `SMS_DEV_MODE=true`.
+
+O trial não aceita SMS com texto personalizado nem dá número próprio, por isso usamos o Verify, que tem mensagem e remetente do próprio Twilio.
+
+A API do Twilio é chamada direto com `requests`, autenticando por HTTP Basic (Account SID + Auth Token), sem SDK.
+
+### textbee (alternativa)
+
+Para usar, trocar para `SMS_PROVIDER=textbee` e definir `TEXTBEE_API_KEY`.
+
+1. Criar uma conta em textbee.dev, instalar o app num Android com chip e conectar pelo QR code.
+2. Copiar a API key para `TEXTBEE_API_KEY`.
+3. O celular precisa estar ligado e com internet na hora do login (inclusive na apresentação).
+4. Plano grátis: 1 celular, 50 SMS por dia e 300 por mês. O SMS sai pelo plano do chip.
+
+### Usuários que já existiam
+
+- Usuários sem telefone não conseguem fazer login (`400`), porque não têm para onde receber o código. Cadastrar o telefone no banco no formato `+5582999999999`.
+- Telefones antigos fora desse formato (ex.: `85999991111`) precisam ser corrigidos no banco para o SMS chegar.
+
+---
+
+## Onde está no código
+
+| Arquivo | Conteúdo |
+|---|---|
+| `src/security.py` | Hash de senha, cookie de sessão, `get_current_user`, `require_admin`, `require_user` |
+| `src/sms.py` | Envio e conferência do código pelo Twilio Verify ou textbee (e o modo de desenvolvimento) |
+| `src/routers/auth.py` | `/auth/login`, `/auth/verify`, `/auth/logout`, `/auth/logout-all`, `/auth/me` |
+| `src/routers/*.py` | Cada rota declara quem pode acessá-la com `Depends(...)` |
+
+Para proteger uma rota nova:
 
 ```python
-import models
-from security import get_current_user
+from security import get_current_user, require_admin, require_user
 
 @router.get("/algo")
-def algo(user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
-    ...  # user é o usuário logado; sem sessão ativa a rota já responde 401
-
-
-from security import require_admin, require_user
+def algo(user: models.User = Depends(get_current_user)):  # qualquer usuário logado
+    ...
 
 @router.post("/algo-de-admin")
-def so_admin(user: models.User = Depends(require_admin)):
-    ...  # sem login → 401; logado mas não é admin → 403
-```
-
----
-
-## Parte 2 — 2FA por SMS (textbee)
-
-Objetivo: depois de acertar a senha, o usuário recebe um código por SMS e só fica logado depois de digitá-lo.
-
-### Tarefas
-
-1. **Banco** — criar `migrations/002_otp.sql` e os campos no model `User`:
-   - `otp_hash` (String 255, nullable) — hash do código, nunca o código puro.
-   - `otp_expires_at` (DateTime, nullable) — validade de 5 minutos.
-   - `otp_attempts` (Integer, default 0) — máximo de 5 tentativas.
-2. **`src/sms.py`** — função `send_sms(phone, message)`:
-   ```python
-   requests.post(
-       "https://api.textbee.dev/api/v1/gateway/send-sms",
-       headers={"x-api-key": TEXTBEE_API_KEY},
-       json={"recipients": [phone], "message": message},
-   )
-   ```
-   Com `SMS_DEV_MODE=true` no `.env`, só imprimir o código no log em vez de enviar (para não depender do celular nos testes). Adicionar `requests` ao `requirements.txt`.
-3. **`POST /auth/login`** (tem um `TODO` marcando o lugar):
-   - Gerar o código: `f"{secrets.randbelow(10**6):06d}"`.
-   - Salvar `otp_hash` (pode usar `hash_password` do `security.py`), `otp_expires_at` e zerar `otp_attempts`.
-   - Enviar o SMS e responder com o telefone mascarado (`+55*******9999`).
-   - Criar o cookie como pendente: `set_session_cookie(response, user, STAGE_PENDING)`.
-4. **`POST /auth/verify`** — body `{"code": "123456"}`:
-   - `user, stage = read_session(request, db)` e exigir `stage == STAGE_PENDING`.
-   - Validar expiração (401), tentativas (429) e o código (401, incrementando `otp_attempts`).
-   - Se der certo: limpar os campos de OTP e `set_session_cookie(response, user)` (sessão ativa).
-5. **Telefone** — validar no `schemas.py` o formato E.164 (`+5582999999999`) e decidir o que fazer com usuário sem telefone (sugestão: tornar `phone` obrigatório no cadastro).
-
-### Configuração do textbee
-
-1. Criar conta em textbee.dev, instalar o app num Android com chip e conectar pelo QR code.
-2. Copiar a API key para `TEXTBEE_API_KEY` no `.env` e no Render.
-3. O celular precisa estar ligado e com internet na hora do login (inclusive na apresentação).
-
----
-
-## Parte 3 — Proteger as rotas existentes
-
-Objetivo: aplicar os papéis nas rotas e garantir que cada usuário só mexa nos próprios dados.
-
-### Tarefas
-
-1. **Wishlist** (`routers/wishlist.py`, `controllers.py`, `schemas.py`) — rotas com `Depends(require_user)`:
-   - Tirar `user_id` do `WishlistCreate` — ele vem do usuário logado.
-   - Trocar `GET /wishlist/by-user/{id}` por `GET /wishlist` (wishlist do usuário logado).
-   - `GET /wishlist/{id}` e `DELETE /wishlist/{id}`: se o item não for do usuário logado, responder 404.
-2. **Users** (`routers/users.py`):
-   - `POST /users` continua público (é o cadastro).
-   - `PUT` e `DELETE /users/{id}`: só se `id == user.id`, senão 403.
-   - `GET /users` e `GET /users/{id}`: exigir login.
-3. **Games** (`routers/games.py`): `GET` público; `POST`, `PUT` e `DELETE` com `Depends(require_admin)`.
-4. **(Opcional)** `PATCH /users/{id}/role` só para admin, para promover usuários sem precisar de SQL.
-5. **README**: atualizar a tabela de endpoints, os exemplos de requisição (sem `user_id` na wishlist) e adicionar a seção de autenticação com os papéis e o fluxo login → verify → uso → logout.
-
----
-
-## Fluxo final (depois das 3 partes)
-
-```
-POST /users          {username, email, password, phone}   → 201
-POST /auth/login     {email, password}                    → 200 + cookie (pendente) + SMS
-POST /auth/verify    {code}                     + cookie  → 200 + cookie (ativo)
-GET  /wishlist                                  + cookie  → 200
-POST /auth/logout                                         → 200 (apaga o cookie)
+def so_admin(user: models.User = Depends(require_admin)):  # sem login → 401; não é admin → 403
+    ...
 ```
