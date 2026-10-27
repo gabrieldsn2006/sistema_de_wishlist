@@ -22,6 +22,7 @@ Desenvolver um sistema básico de wishlist de jogos, onde os usuários podem adi
 | Hash de Senhas | pwdlib (Argon2) |
 | Sessão | Cookie assinado (itsdangerous) |
 | Código por SMS (2FA) | Twilio Verify |
+| Frontend | Streamlit |
 
 ## Ambiente Deployado
 
@@ -116,6 +117,37 @@ O projeto utiliza um banco de dados MySQL hospedado na Aiven. A estrutura do ban
 | game_id | int, foreign key referencing games.id |
 | created_at | date |
 | last_update | date |
+
+---
+
+## Frontend (Streamlit)
+
+Interface web básica em [`frontend/app.py`](frontend/app.py), feita com Streamlit. Ela não acessa o banco: conversa com a API por HTTP, como qualquer outro cliente, e guarda o cookie de sessão da API para cada pessoa conectada.
+
+| Papel | Telas |
+|---|---|
+| `user` | Catálogo (com botão para adicionar à wishlist) e Minha wishlist |
+| `admin` | Catálogo, Gerenciar jogos (adicionar, editar, remover) e Usuários (alterar papel) |
+
+### Rodando localmente
+
+```bash
+pip install -r frontend/requirements.txt
+API_URL=http://localhost:8000 streamlit run frontend/app.py
+```
+
+Sem `API_URL`, o frontend usa `http://localhost:8000`.
+
+### Deploy no Render
+
+O frontend é um **segundo Web Service** no Render, apontando para este mesmo repositório:
+
+| Campo | Valor |
+|---|---|
+| Root Directory | `frontend` |
+| Build Command | `pip install -r requirements.txt` |
+| Start Command | `streamlit run app.py --server.port $PORT --server.address 0.0.0.0` |
+| Variável de ambiente | `API_URL=https://sistema-de-wishlist.onrender.com` |
 
 ---
 
