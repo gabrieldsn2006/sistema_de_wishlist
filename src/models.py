@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Date, ForeignKey, Integer, String
+from sqlalchemy import Column, Date, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -13,6 +13,12 @@ class User(Base):
     email = Column(String(150), nullable=False, unique=True)
     password = Column(String(255), nullable=False)
     phone = Column(String(20))
+    role = Column(String(20), nullable=False, default="user", server_default="user")  # "admin" ou "user"
+    session_version = Column(Integer, nullable=False, default=0, server_default="0")
+    # Código do 2FA por SMS (guardado só em hash)
+    otp_hash = Column(String(255))
+    otp_expires_at = Column(DateTime)
+    otp_attempts = Column(Integer, nullable=False, default=0, server_default="0")
     created_at = Column(Date, default=func.current_date())
     last_update = Column(Date, default=func.current_date(), onupdate=func.current_date())
 
