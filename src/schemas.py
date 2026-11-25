@@ -1,9 +1,9 @@
-from datetime import date
+from datetime import date, datetime
 from typing import Annotated, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-# Telefone no formato internacional E.164, exigido para o envio do SMS. Ex.: +5582999999999
+# Telefone opcional, no formato internacional E.164. Ex.: +5582999999999
 Phone = Annotated[str, Field(pattern=r"^\+[1-9]\d{7,14}$", examples=["+5582999999999"])]
 
 
@@ -12,7 +12,7 @@ class UserCreate(BaseModel):
     username: str
     email: str
     password: str
-    phone: Phone
+    phone: Optional[Phone] = None
 
 
 class UserUpdate(BaseModel):
@@ -42,10 +42,6 @@ class LoginRequest(BaseModel):
 
 class RoleUpdate(BaseModel):
     role: Literal["admin", "user"]
-
-
-class VerifyRequest(BaseModel):
-    code: str = Field(pattern=r"^\d{6}$", examples=["123456"])
 
 
 # ---------- Games ----------
@@ -90,6 +86,29 @@ class WishlistResponse(BaseModel):
     last_update: Optional[date] = None
 
 
+class PriceInfo(BaseModel):
+    """Preço vindo do Serviço de Preços (sempre em dólar)."""
+
+    found: bool
+    current_price: Optional[float] = None
+    normal_price: Optional[float] = None
+    savings_percent: Optional[float] = None
+    store: Optional[str] = None
+    deal_url: Optional[str] = None
+    cheapest_ever: Optional[float] = None
+    currency: str = "USD"
+    last_checked_at: Optional[datetime] = None
+
+
+class WishlistItemWithPrice(WishlistResponse):
+    price: Optional[PriceInfo] = None
+    price_status: Literal["ok", "not_tracked", "unavailable"] = Field(
+        "ok",
+        description="ok: preço abaixo; not_tracked: ainda sendo monitorado pela primeira vez; "
+        "unavailable: Serviço de Preços fora do ar",
+    )
+
+
 class WishlistDetailResponse(BaseModel):
     """Resposta enriquecida: item da wishlist já com os dados do jogo."""
 
@@ -97,3 +116,35 @@ class WishlistDetailResponse(BaseModel):
     user_id: int
     game: GameResponse
     created_at: Optional[date] = None
+
+
+# ---------- Alertas (webhook do Serviço de Preços) ----------
+class PriceDropEvent(BaseModel):
+    """Corpo do webhook POST /webhooks/price-drop, enviado pelo Serviço de Preços."""
+
+    event_id: str = Field(min_length=1, max_length=100)
+    game_id: int
+    title: str
+    old_price: float
+    new_price: float
+    normal_price: Optional[float] = None
+    savings_percent: Optional[float] = None
+    store: Optional[str] = None
+    deal_url: Optional[str] = Field(None, max_length=300)
+    currency: str = "USD"
+    detected_at: Optional[datetime] = None
+
+
+class AlertResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    game_id: int
+    game_title: str
+    old_price: float
+    new_price: float
+    normal_price: Optional[float] = None
+    store: Optional[str] = None
+    deal_url: Optional[str] = None
+    currency: str
+    created_at: datetime

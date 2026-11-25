@@ -1,0 +1,43 @@
+# Agendador do Serviço de Preços.
+#
+# No Render free o serviço dorme depois de 15 minutos parado, então não dá para
+# deixar uma tarefa em segundo plano rodando lá. Este workflow roda nos servidores
+# do GitHub, acorda os dois serviços e chama POST /check, assinado com HMAC.
+#
+# Secrets necessários (Settings → Secrets and variables → Actions):
+#   INTERNAL_SECRET    mesma chave configurada nos dois serviços no Render
+#   PRICE_SERVICE_URL  ex.: https://wishlist-precos.onrender.com
+#   WISHLIST_API_URL   ex.: https://sistema-de-wishlist.onrender.com
+name: Verificar preços
+
+on:
+  schedule:
+    - cron: "0 */6 * * *" # a cada 6 horas (horário UTC; o GitHub pode atrasar alguns minutos)
+  workflow_dispatch: # botão "Run workflow" na aba Actions, para rodar na hora
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Acordar os serviços no Render
+        env:
+          PRICE_SERVICE_URL: ${{ secrets.PRICE_SERVICE_URL }}
+          WISHLIST_API_URL: ${{ secrets.WISHLIST_API_URL }}
+        run: |
+          curl -s -o /dev/null --max-time 120 --retry 3 --retry-all-errors "$PRICE_SERVICE_URL/" &
+          curl -s -o /dev/null --max-time 120 --retry 3 --retry-all-errors "$WISHLIST_API_URL/" &
+          wait
+
+      - name: Chamar POST /check
+        env:
+          INTERNAL_SECRET: ${{ secrets.INTERNAL_SECRET }}
+          PRICE_SERVICE_URL: ${{ secrets.PRICE_SERVICE_URL }}
+        run: |
+          # Mesma assinatura do signing.py: timestamp \n método \n caminho \n corpo (vazio)
+          TS=$(date +%s)
+          SIG=$(printf '%s\nPOST\n/check\n' "$TS" | openssl dgst -sha256 -hmac "$INTERNAL_SECRET" -r | cut -d' ' -f1)
+          curl -sS --fail-with-body --max-time 240 -X POST "$PRICE_SERVICE_URL/check" \
+            -H "X-Timestamp: $TS" \
+            -H "X-Signature: sha256=$SIG"
+          echo

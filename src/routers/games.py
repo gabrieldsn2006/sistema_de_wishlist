@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 import controllers
 import models
+import price_client
 import schemas
 from database import get_db
 from security import require_admin
@@ -37,22 +38,30 @@ def get_game(id: int, db: Session = Depends(get_db)):
 def update_game(
     id: int,
     game: schemas.GameUpdate,
+    background: BackgroundTasks,
     admin: models.User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    updated = controllers.update_game(db, id, game)
-    if not updated:
+    current = controllers.get_game(db, id)
+    if not current:
         raise HTTPException(status_code=404, detail="Jogo não encontrado")
+    old_title = current.title
+    updated = controllers.update_game(db, id, game)
+    # Título novo = o Serviço de Preços precisa procurar o jogo de novo na CheapShark
+    if updated.title != old_title and controllers.game_is_wished(db, id):
+        background.add_task(price_client.track, updated.id, updated.title)
     return updated
 
 
 @router.delete("/{id}", status_code=200)
 def delete_game(
     id: int,
+    background: BackgroundTasks,
     admin: models.User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     deleted = controllers.delete_game(db, id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Jogo não encontrado")
+    background.add_task(price_client.untrack, id)
     return {"message": "Jogo deletado com sucesso"}

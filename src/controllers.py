@@ -133,3 +133,59 @@ def remove_from_wishlist(db: Session, wishlist_id: int, user_id: int):
     db.delete(item)
     db.commit()
     return item
+
+
+def game_is_wished(db: Session, game_id: int) -> bool:
+    """True se o jogo está na wishlist de alguém (ou seja, precisa continuar monitorado)."""
+    return db.query(models.Wishlist.id).filter(models.Wishlist.game_id == game_id).first() is not None
+
+
+def users_wishing(db: Session, game_id: int) -> list[int]:
+    rows = db.query(models.Wishlist.user_id).filter(models.Wishlist.game_id == game_id).distinct().all()
+    return [row.user_id for row in rows]
+
+
+# ---------- Alertas ----------
+def create_alerts(db: Session, event: schemas.PriceDropEvent) -> int:
+    """Cria um alerta para cada usuário com o jogo na wishlist. Ignora eventos repetidos."""
+    created = 0
+    for user_id in users_wishing(db, event.game_id):
+        exists = (
+            db.query(models.Alert.id)
+            .filter(models.Alert.user_id == user_id, models.Alert.event_id == event.event_id)
+            .first()
+        )
+        if exists:
+            continue
+        db.add(models.Alert(
+            user_id=user_id,
+            game_id=event.game_id,
+            event_id=event.event_id,
+            old_price=event.old_price,
+            new_price=event.new_price,
+            normal_price=event.normal_price,
+            store=event.store,
+            deal_url=event.deal_url,
+            currency=event.currency,
+        ))
+        created += 1
+    db.commit()
+    return created
+
+
+def list_alerts(db: Session, user_id: int):
+    return (
+        db.query(models.Alert)
+        .filter(models.Alert.user_id == user_id)
+        .order_by(models.Alert.created_at.desc(), models.Alert.id.desc())
+        .all()
+    )
+
+
+def delete_alert(db: Session, alert_id: int, user_id: int):
+    alert = db.query(models.Alert).filter(models.Alert.id == alert_id, models.Alert.user_id == user_id).first()
+    if not alert:
+        return None
+    db.delete(alert)
+    db.commit()
+    return alert

@@ -3,15 +3,16 @@ from fastapi import FastAPI
 
 import models
 from database import Base, engine
-from routers import auth, games, users, wishlist
+from routers import alerts, auth, games, users, wishlist
 
 # Cria as tabelas no banco caso ainda não existam
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="Sistema de Wishlist de Jogos",
-    description="API REST para gerenciar usuários, jogos e a wishlist de cada usuário.",
-    version="1.0.0",
+    description="API REST para gerenciar usuários, jogos e a wishlist de cada usuário. "
+    "Integra com o Serviço de Preços (REST) e recebe dele os avisos de queda de preço (webhook).",
+    version="2.0.0",
 )
 
 
@@ -24,6 +25,7 @@ app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(games.router)
 app.include_router(wishlist.router)
+app.include_router(alerts.router)
 
 
 if __name__ == "__main__":

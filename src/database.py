@@ -14,28 +14,33 @@ DB_USER = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
 DB_NAME = os.getenv("DB_NAME", "wishlist")
 
-configured_ca = os.getenv("DB_SSL_CA", "ca.pem")
-DB_SSL_CA = Path(configured_ca)
-if not DB_SSL_CA.is_absolute():
-    DB_SSL_CA = PROJECT_ROOT / DB_SSL_CA
 
-if not DB_SSL_CA.is_file():
-    raise FileNotFoundError(f"Certificado CA não encontrado: {DB_SSL_CA}")
 
-DATABASE_URL = URL.create(
-    drivername="mysql+pymysql",
-    username=DB_USER,
-    password=DB_PASSWORD,
-    host=DB_HOST,
-    port=int(DB_PORT),
-    database=DB_NAME,
-)
+def build_engine():
+    # DATABASE_URL (opcional) troca o MySQL por outro banco, ex.: sqlite:///wishlist.db para testes locais
+    override = os.getenv("DATABASE_URL")
+    if override:
+        connect_args = {"check_same_thread": False} if override.startswith("sqlite") else {}
+        return create_engine(override, connect_args=connect_args, pool_pre_ping=True)
 
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"ssl": {"ca": str(DB_SSL_CA)}},
-    pool_pre_ping=True,
-)
+    ca_path = Path(os.getenv("DB_SSL_CA", "ca.pem"))
+    if not ca_path.is_absolute():
+        ca_path = PROJECT_ROOT / ca_path
+    if not ca_path.is_file():
+        raise FileNotFoundError(f"Certificado CA não encontrado: {ca_path}")
+
+    url = URL.create(
+        drivername="mysql+pymysql",
+        username=DB_USER,
+        password=DB_PASSWORD,
+        host=DB_HOST,
+        port=int(DB_PORT),
+        database=DB_NAME,
+    )
+    return create_engine(url, connect_args={"ssl": {"ca": str(ca_path)}}, pool_pre_ping=True)
+
+
+engine = build_engine()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

@@ -39,7 +39,7 @@ def error_message(response) -> str:
 
 
 def logout_local(message: str | None = None):
-    for key in ("http", "user", "pending"):
+    for key in ("http", "user"):
         st.session_state.pop(key, None)
     if message:
         st.session_state.flash = message
@@ -52,10 +52,6 @@ def login_screen():
     if st.session_state.get("flash"):
         st.info(st.session_state.pop("flash"))
 
-    if st.session_state.get("pending"):
-        code_screen()
-        return
-
     tab_login, tab_signup = st.tabs(["Entrar", "Criar conta"])
 
     with tab_login:
@@ -65,7 +61,7 @@ def login_screen():
             if st.form_submit_button("Entrar", type="primary"):
                 response = call("POST", "/auth/login", json={"email": email, "password": password})
                 if response.ok:
-                    st.session_state.pending = response.json()["message"]
+                    st.session_state.user = call("GET", "/auth/me").json()
                     st.rerun()
                 st.error(error_message(response))
 
@@ -74,32 +70,12 @@ def login_screen():
             username = st.text_input("Nome")
             email = st.text_input("Email", key="signup_email")
             password = st.text_input("Senha", type="password", key="signup_password")
-            phone = st.text_input("Celular", placeholder="+5585999999999")
             if st.form_submit_button("Criar conta"):
-                response = call(
-                    "POST",
-                    "/users",
-                    json={"username": username, "email": email, "password": password, "phone": phone},
-                )
+                response = call("POST", "/users", json={"username": username, "email": email, "password": password})
                 if response.ok:
                     st.success("Conta criada. Agora entre pela aba ao lado.")
                 else:
                     st.error(error_message(response))
-
-
-def code_screen():
-    st.success(st.session_state.pending)
-    with st.form("verify"):
-        code = st.text_input("Código de 6 dígitos recebido por SMS", max_chars=6)
-        if st.form_submit_button("Confirmar", type="primary"):
-            response = call("POST", "/auth/verify", json={"code": code.strip()})
-            if response.ok:
-                st.session_state.pop("pending")
-                st.session_state.user = call("GET", "/auth/me").json()
-                st.rerun()
-            st.error(error_message(response))
-    if st.button("Voltar"):
-        logout_local()
 
 
 # ---------- Telas com login ----------
@@ -137,9 +113,40 @@ def catalog_page():
                 st.error(error_message(response))
 
 
+def usd(value) -> str:
+    return f"US$ {value:,.2f}" if value is not None else "-"
+
+
+def price_text(item: dict) -> str:
+    """Resumo do preço que veio do Serviço de Preços (CheapShark)."""
+    status = item.get("price_status")
+    if status == "unavailable":
+        return "💤 Preço indisponível: o Serviço de Preços está acordando, tente de novo em 1 minuto."
+    if status == "not_tracked":
+        return "🔎 Buscando o preço deste jogo..."
+    price = item.get("price") or {}
+    if not price.get("found"):
+        return "❔ Jogo não encontrado na CheapShark."
+    if price.get("current_price") is None:
+        return "🔎 Buscando o preço deste jogo..."
+    text = f"💲 **{usd(price['current_price'])}** na {price.get('store') or 'loja'}"
+    if price.get("savings_percent"):
+        text += f" (−{price['savings_percent']:.0f}%, normal {usd(price.get('normal_price'))})"
+    if price.get("cheapest_ever") is not None:
+        text += f" · menor preço histórico {usd(price['cheapest_ever'])}"
+    if price.get("deal_url"):
+        text += f" · [ver oferta]({price['deal_url']})"
+    return text
+
+
 def wishlist_page():
     st.header("Minha wishlist")
-    items = call("GET", "/wishlist").json()
+    st.caption("Preços em dólar, consultados na CheapShark pelo Serviço de Preços.")
+    response = call("GET", "/wishlist")
+    if not response.ok:
+        st.error(error_message(response))
+        return
+    items = response.json()
     games = {g["id"]: g for g in load_games()}
     if not items:
         st.info("Sua wishlist está vazia. Adicione jogos pelo catálogo.")
@@ -147,9 +154,38 @@ def wishlist_page():
     for item in items:
         game = games.get(item["game_id"], {"title": f"Jogo #{item['game_id']}"})
         col_name, col_button = st.columns([4, 1])
-        col_name.write(f"**{game_label(game)}** — adicionado em {item.get('created_at') or '-'}")
+        col_name.markdown(f"**{game_label(game)}** — adicionado em {item.get('created_at') or '-'}  \n"
+                          f"{price_text(item)}")
         if col_button.button("Remover", key=f"remove-{item['id']}"):
             response = call("DELETE", f"/wishlist/{item['id']}")
+            if response.ok:
+                st.rerun()
+            st.error(error_message(response))
+
+
+def alerts_page():
+    st.header("Alertas de preço")
+    st.caption("Quando um jogo da sua wishlist fica mais barato, o Serviço de Preços avisa a API por webhook "
+               "e o alerta aparece aqui.")
+    response = call("GET", "/alerts")
+    if not response.ok:
+        st.error(error_message(response))
+        return
+    alerts = response.json()
+    if not alerts:
+        st.info("Nenhum alerta ainda. Os preços são verificados algumas vezes por dia.")
+        return
+    for alert in alerts:
+        col_text, col_button = st.columns([4, 1])
+        text = (f"📉 **{alert['game_title']}** caiu de {usd(alert['old_price'])} para "
+                f"**{usd(alert['new_price'])}**")
+        if alert.get("store"):
+            text += f" na {alert['store']}"
+        if alert.get("deal_url"):
+            text += f" · [ver oferta]({alert['deal_url']})"
+        col_text.markdown(f"{text}  \n{alert['created_at'][:16].replace('T', ' ')} (UTC)")
+        if col_button.button("Dispensar", key=f"alert-{alert['id']}"):
+            response = call("DELETE", f"/alerts/{alert['id']}")
             if response.ok:
                 st.rerun()
             st.error(error_message(response))
@@ -236,7 +272,7 @@ def main():
     with st.sidebar:
         st.write(f"Olá, **{user['username']}**")
         st.caption("Administrador" if is_admin else "Usuário")
-        pages = ["Catálogo", "Gerenciar jogos", "Usuários"] if is_admin else ["Catálogo", "Minha wishlist"]
+        pages = ["Catálogo", "Gerenciar jogos", "Usuários"] if is_admin else ["Catálogo", "Minha wishlist", "Alertas"]
         page = st.radio("Menu", pages, label_visibility="collapsed")
         if st.button("Sair"):
             call("POST", "/auth/logout")
@@ -245,6 +281,7 @@ def main():
     {
         "Catálogo": catalog_page,
         "Minha wishlist": wishlist_page,
+        "Alertas": alerts_page,
         "Gerenciar jogos": manage_games_page,
         "Usuários": users_page,
     }[page]()

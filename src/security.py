@@ -20,9 +20,9 @@ COOKIE_NAME = "session"
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "true").lower() == "true"
 SESSION_MAX_AGE = 60 * 60 * 8  # 8 horas
 
-# Etapas da sessão guardadas no cookie
+# Etapa da sessão guardada no cookie. Só existe "active" desde que o SMS saiu;
+# o campo continua no cookie para recusar sessões "pending" antigas.
 STAGE_ACTIVE = "active"
-STAGE_PENDING = "pending"  # senha ok, falta o código do SMS
 
 password_hash = PasswordHash.recommended()  # Argon2
 serializer = URLSafeTimedSerializer(SECRET_KEY, salt="wishlist-session")
@@ -45,8 +45,8 @@ def verify_password(db: Session, user: models.User, password: str) -> bool:
 
 
 # ---------- Sessão (cookie assinado, sem estado no servidor) ----------
-def set_session_cookie(response: Response, user: models.User, stage: str = STAGE_ACTIVE):
-    token = serializer.dumps({"uid": user.id, "sv": user.session_version, "stage": stage})
+def set_session_cookie(response: Response, user: models.User):
+    token = serializer.dumps({"uid": user.id, "sv": user.session_version, "stage": STAGE_ACTIVE})
     response.set_cookie(
         COOKIE_NAME,
         token,
@@ -84,7 +84,7 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> models.
     """Dependência para rotas protegidas: exige sessão ativa."""
     user, stage = read_session(request, db)
     if stage != STAGE_ACTIVE:
-        raise HTTPException(status_code=401, detail="Verificação pendente")
+        raise HTTPException(status_code=401, detail="Sessão inválida")
     return user
 
 

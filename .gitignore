@@ -3,3 +3,6 @@
 
 __pycache__/
 *.pyc
+
+# Bancos SQLite de teste local (DATABASE_URL=sqlite:///...)
+*.db
