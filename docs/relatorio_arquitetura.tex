@@ -1,0 +1,399 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[portuguese]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{float}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit}
+
+\definecolor{primaryblue}{HTML}{1D4ED8}
+\definecolor{darkblue}{HTML}{0F172A}
+\definecolor{slategray}{HTML}{475569}
+\definecolor{codebg}{HTML}{F8FAFC}
+\definecolor{codeborder}{HTML}{CBD5E1}
+\definecolor{boxfill}{HTML}{EFF6FF}
+\definecolor{extfill}{HTML}{FEF3C7}
+\definecolor{dbfill}{HTML}{ECFDF5}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=primaryblue,
+    urlcolor=primaryblue,
+    citecolor=primaryblue,
+    pdftitle={Relatório Técnico de Arquitetura — Sistema de Wishlist de Jogos (AV3)},
+    pdfauthor={Victor Lins Gurgel do Amaral, Lorenzo Barros Calheiros Pinheiro, Gabriel De Sousa Nobre}
+}
+
+\lstset{
+    basicstyle=\ttfamily\small,
+    backgroundcolor=\color{codebg},
+    frame=single,
+    rulecolor=\color{codeborder},
+    breaklines=true,
+    breakatwhitespace=true,
+    showstringspaces=false,
+    tabsize=2,
+    columns=flexible,
+    keepspaces=true,
+    literate=
+        {á}{{\'a}}1 {à}{{\`a}}1 {â}{{\^a}}1 {ã}{{\~a}}1
+        {é}{{\'e}}1 {ê}{{\^e}}1 {í}{{\'i}}1
+        {ó}{{\'o}}1 {ô}{{\^o}}1 {õ}{{\~o}}1
+        {ú}{{\'u}}1 {ç}{{\c{c}}}1
+        {Á}{{\'A}}1 {À}{{\`A}}1 {Â}{{\^A}}1 {Ã}{{\~A}}1
+        {É}{{\'E}}1 {Ê}{{\^E}}1 {Í}{{\'I}}1
+        {Ó}{{\'O}}1 {Ô}{{\^O}}1 {Õ}{{\~O}}1
+        {Ú}{{\'U}}1 {Ç}{{\c{C}}}1
+        {→}{{$\rightarrow$}}1 {−}{{$-$}}1 {↔}{{$\leftrightarrow$}}1
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\setlength{\headheight}{15pt}
+\fancyhead[L]{\small\color{slategray} Sistema de Wishlist de Jogos — AV3}
+\fancyhead[R]{\small\color{slategray} Técnicas de Integração de Sistemas}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\emergencystretch=3em
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+
+\begin{document}
+
+\begin{titlepage}
+    \centering
+    \vspace*{1.5cm}
+    {\large\textsc{Técnicas de Integração de Sistemas — Avaliação AV3}\par}
+    \vspace{1.2cm}
+    {\Huge\bfseries\color{darkblue} Relatório Técnico de Arquitetura e Decisões de Integração\par}
+    \vspace{0.6cm}
+    {\Large\color{primaryblue} Sistema de Wishlist de Jogos com Monitoramento de Preços\par}
+    \vspace{1.5cm}
+
+    \begin{tabular}{rl}
+        \toprule
+        \textbf{Equipe:} & Victor Lins Gurgel do Amaral \\
+                         & Lorenzo Barros Calheiros Pinheiro \\
+                         & Gabriel De Sousa Nobre \\
+        \midrule
+        \textbf{Repositório:} & \url{https://github.com/gabrieldsn2006/sistema_de_wishlist} \\
+        \textbf{Referência:} & Branch \texttt{main}, commit \texttt{5e1ab7a} \\
+        \textbf{Data:} & Novembro de 2026 \\
+        \bottomrule
+    \end{tabular}
+
+    \vfill
+    \begin{abstract}
+        \noindent Este relatório documenta as decisões arquiteturais adotadas na evolução do \textbf{Sistema de Wishlist de Jogos} para a AV3, justificando tecnicamente a separação do projeto em dois sistemas de API independentes (\textbf{Wishlist API} em \texttt{src/} e \textbf{Serviço de Preços} em \texttt{price\_service/}), integrados à API pública externa \textbf{CheapShark}, ao agendador \textbf{GitHub Actions} e ao cliente web \textbf{Streamlit}. São analisados os fundamentos de coesão de domínio, isolamento de falhas com degradação controlada, separação de bancos de dados, padrão \textit{Adapter}, comunicação híbrida (REST síncrono e Webhook orientado a eventos com \textit{Outbox} e idempotência), segurança por cookies assinados e assinaturas criptográficas \texttt{HMAC-SHA256}, além das restrições reais de infraestrutura e estado atual da implementação.
+    \end{abstract}
+    \vspace*{1cm}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+\section{Introdução e Visão Geral}
+
+O \textbf{Sistema de Wishlist de Jogos} evoluiu de uma API REST monolítica com verificação em duas etapas por SMS (AV2) para uma \textbf{arquitetura distribuída baseada em serviços} (AV3). A aplicação permite que usuários criem contas, montem suas listas de desejos a partir de um catálogo de jogos gerenciado por administradores, consultem o preço atual em lojas de PC (em dólar, USD), acompanhem o menor preço histórico registrado e recebam alertas automáticos sempre que ocorrer uma queda de preço.
+
+Para atender aos requisitos de integração entre múltiplos sistemas próprios e externos com segurança, consistência de dados e deploy acessível, a arquitetura foi dividida em \textbf{dois sistemas de API próprios e desacoplados}, complementados por um cliente web em Streamlit, uma API externa de mercado e um agendador automatizado:
+
+\begin{table}[H]
+\centering
+\caption{Componentes do ecossistema do Sistema de Wishlist de Jogos (AV3).}
+\label{tab:componentes}
+\small
+\begin{tabularx}{\textwidth}{@{}l l l Y@{}}
+\toprule
+\textbf{Componente} & \textbf{Pasta} & \textbf{Natureza} & \textbf{Responsabilidade Principal} \\
+\midrule
+Wishlist API & \texttt{src/} & Próprio (FastAPI) & Usuários, autenticação por cookie assinado, papéis (\texttt{admin}/\texttt{user}), catálogo, wishlists e caixa de alertas. \\
+Serviço de Preços & \texttt{price\_service/} & Próprio (FastAPI) & Rastreamento na CheapShark, histórico temporal de preços, checagem em lote (\texttt{POST /check}) e disparo via \textit{outbox}/webhook. \\
+Frontend Web & \texttt{frontend/} & Cliente (Streamlit) & Interface gráfica por papel; consome apenas a Wishlist API mantendo cookie de sessão. \\
+CheapShark API & Externa & REST pública & Preços atuais, descontos e menor preço histórico em lojas de PC (USD). \\
+GitHub Actions & \texttt{.github/workflows/} & Agendador (Cron) & Acorda os serviços a cada 6 horas e aciona \texttt{POST /check} com assinatura HMAC. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+    node distance=1.3cm and 1.6cm,
+    service/.style={rectangle, rounded corners=4pt, draw=primaryblue, thick, fill=boxfill, align=center, minimum width=3.8cm, minimum height=1.1cm, font=\small},
+    external/.style={rectangle, rounded corners=4pt, draw=orange!70!black, thick, fill=extfill, align=center, minimum width=3.4cm, minimum height=1.0cm, font=\small},
+    db/.style={cylinder, shape border rotate=90, aspect=0.25, draw=green!50!black, thick, fill=dbfill, align=center, minimum width=2.4cm, minimum height=1.1cm, font=\small},
+    arr/.style={-{Stealth[length=2.5mm]}, thick, color=darkblue}
+]
+    \node[service] (fe) {\textbf{Frontend (Streamlit)}\\ \footnotesize\texttt{frontend/app.py}};
+    \node[service, below=1.1cm of fe] (wa) {\textbf{Wishlist API (FastAPI)}\\ \footnotesize\texttt{src/main.py} (v2.0.0)};
+    \node[service, right=3.2cm of wa] (ps) {\textbf{Serviço de Preços (FastAPI)}\\ \footnotesize\texttt{price\_service/main.py} (v1.0.0)};
+    \node[db, below=1.2cm of wa] (dbw) {\textbf{MySQL Aiven}\\ \footnotesize Banco: \texttt{wishlist}};
+    \node[db, below=1.2cm of ps] (dbp) {\textbf{MySQL Aiven}\\ \footnotesize Banco: \texttt{prices}};
+    \node[external, right=2.3cm of ps, yshift=1.0cm] (gha) {\textbf{GitHub Actions}\\ \footnotesize Cron a cada 6h};
+    \node[external, right=2.3cm of ps, yshift=-1.0cm] (cs) {\textbf{CheapShark API}\\ \footnotesize Externa (v1.0)};
+
+    \draw[arr] (fe) -- node[right, font=\scriptsize, align=left] {REST/JSON\\ + Cookie assinado} (wa);
+    \draw[arr] ([yshift=6pt]wa.east) -- node[above, font=\scriptsize, align=center] {REST síncrono + HMAC\\(\texttt{/tracked}, \texttt{/prices})} ([yshift=6pt]ps.west);
+    \draw[arr] ([yshift=-6pt]ps.west) -- node[below, font=\scriptsize, align=center] {Webhook + HMAC\\(\texttt{/webhooks/price-drop})} ([yshift=-6pt]wa.east);
+    \draw[arr] (wa) -- node[right, font=\scriptsize] {MySQL TLS} (dbw);
+    \draw[arr] (ps) -- node[right, font=\scriptsize] {MySQL TLS} (dbp);
+    \draw[arr] (gha) -- node[above, sloped, font=\scriptsize] {\texttt{POST /check} (HMAC)} (ps);
+    \draw[arr] (ps) -- node[below, sloped, font=\scriptsize] {REST GET (lotes de 25)} (cs);
+\end{tikzpicture}%
+}
+\caption{Arquitetura distribuída do sistema e suas fronteiras de integração.}
+\label{fig:arquitetura}
+\end{figure}
+
+\section{Justificativa Central: Por que Separar em Dois Sistemas de API?}
+
+Em lugar de incorporar a busca na CheapShark, o histórico de preços e as rotinas periódicas dentro da Wishlist API original (mantendo um monólito), a equipe decidiu extrair o monitoramento de mercado para um serviço independente (\texttt{price\_service/}). Essa separação justifica-se por \textbf{seis pilares técnicos} diretamente refletidos no código-fonte.
+
+\subsection{Separação de Responsabilidades (\textit{Bounded Contexts} e Coesão)}
+
+Os dois sistemas pertencem a contextos delimitados distintos, com regras de negócio e taxas de alteração próprias:
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Wishlist API (\texttt{src/}):} domínio centrado no usuário final. Gerencia identidade, hash Argon2, sessões sem estado por cookie, papéis (\texttt{admin} e \texttt{user}), catálogo curado (\texttt{games}), lista de desejos (\texttt{wishlist}) e alertas pessoais (\texttt{alerts}).
+    \item \textbf{Serviço de Preços (\texttt{price\_service/}):} domínio operacional de coleta e monitoramento. Desconhece usuários, cookies e permissões; concentra-se exclusivamente em mapear jogos para identificadores de lojas (\texttt{cheapshark\_id}, \texttt{steam\_app\_id}), registrar séries temporais (\texttt{price\_history}), executar varreduras em lote (\texttt{POST /check}) e gerenciar o envio confiável de notificações (\texttt{webhook\_outbox}).
+\end{itemize}
+
+\subsection{Isolamento de Falhas e Degradação Controlada}
+
+APIs públicas externas estão sujeitas a latência imprevisível, quedas e bloqueios por limite de taxa (\texttt{HTTP 429}). Ao isolar o acesso à CheapShark em um segundo serviço e encapsular a comunicação no cliente \texttt{src/price\_client.py}, falhas no componente de preços nunca comprometem o núcleo da aplicação:
+\begin{itemize}[leftmargin=*]
+    \item Se o Serviço de Preços estiver hibernando ou indisponível, \texttt{price\_client.\_request} captura \texttt{requests.RequestException} e lança \texttt{PriceServiceUnavailable}; a função \texttt{get\_prices} retorna \texttt{None} sem propagar erro \texttt{500} ao cliente.
+    \item Na rota \texttt{GET /wishlist} (\texttt{src/routers/wishlist.py}), cada item recebe um campo explícito \texttt{price\_status} com valores \texttt{"ok"}, \texttt{"not\_tracked"} ou \texttt{"unavailable"}, permitindo que a interface Streamlit (\texttt{frontend/app.py}) exiba mensagens claras mantendo login, catálogo e remoção de jogos operacionais.
+    \item A rota \texttt{GET /wishlist} implementa \textbf{autocura (\textit{self-healing})}: quando encontra um item com \texttt{price\_status == "not\_tracked"}, agenda novamente \texttt{price\_client.track} via \texttt{BackgroundTasks} para registrar o jogo no Serviço de Preços.
+    \item Operações de escrita do usuário (\texttt{POST /wishlist}, \texttt{DELETE /wishlist/\{id\}}, \texttt{PUT /games/\{id\}} e \texttt{DELETE /games/\{id\}}) notificam o Serviço de Preços em segundo plano (\texttt{BackgroundTasks}) após responder ao usuário, evitando que o cliente sofra atraso por chamadas de rede internas.
+\end{itemize}
+
+\subsection{Isolamento de Dados (\textit{Database per Service})}
+
+Embora os dois serviços utilizem a mesma instância MySQL gerenciada na Aiven (por restrição de custo), eles operam em \textbf{bancos de dados logicamente separados}: \texttt{DB\_NAME=wishlist} em \texttt{src/database.py} e \texttt{DB\_NAME=prices} em \texttt{price\_service/database.py}. Um serviço jamais lê ou executa junções SQL sobre tabelas do outro; toda troca de estado ocorre por contratos HTTP/JSON validados por Pydantic. Além disso, ambos permitem sobrescrever a conexão via \texttt{DATABASE\_URL} (por exemplo, SQLite local), facilitando testes unitários e de integração isolados, e mantêm scripts de migração próprios (\texttt{migrations/} vs. \texttt{price\_service/migrations.sql}).
+
+\subsection{Camada Anticorrupção e Desacoplamento da API Externa (Padrão \textit{Adapter})}
+
+Todo conhecimento específico da CheapShark --- URL base, cabeçalho \texttt{User-Agent}, limites de lote (\texttt{BATCH\_SIZE = 25}), tratamento de \texttt{HTTP 429} (\texttt{RateLimited}), códigos \texttt{storeID}/\texttt{dealID} e regra de redirecionamento --- fica encapsulado em \texttt{price\_service/cheapshark.py}. A Wishlist API manipula apenas schemas normalizados (\texttt{PriceInfo} e \texttt{PriceDropEvent}). Como evidência prática desse desacoplamento no commit \texttt{5e1ab7a}, mesmo com as funções \texttt{search\_game}, \texttt{get\_games} e \texttt{store\_name} ainda marcadas com \texttt{TODO} (lançando \texttt{CheapSharkError}), os dois serviços sobem e se comunicam normalmente sem quebrar nenhuma rota da Wishlist API (\texttt{found: false}).
+
+\subsection{Perfis de Carga, Dependências e Deploy Independentes}
+
+Enquanto a Wishlist API atende requisições interativas sob demanda, o Serviço de Preços executa varreduras periódicas em lote (\texttt{POST /check}) com timeouts estendidos (\texttt{--max-time 240} no workflow). No Render, os componentes sobem em \textbf{três Web Services distintos} apontando para o mesmo repositório, diferenciados pelo \texttt{Root Directory} e com arquivos \texttt{requirements.txt} enxutos e isolados (o Serviço de Preços não precisa instalar \texttt{pwdlib[argon2]} nem \texttt{itsdangerous}).
+
+\subsection{Alinhamento Genuíno aos Requisitos da Disciplina}
+
+A separação estabelece fronteiras distribuídas reais entre os dois sistemas próprios e a API externa, justificando naturalmente o uso de REST síncrono, Webhook assíncrono, assinatura \texttt{HMAC-SHA256} e padrão \textit{Outbox} com idempotência.
+
+\begin{table}[H]
+\centering
+\caption{Comparativo entre arquitetura monolítica e a separação em dois serviços adotada.}
+\label{tab:comparativo_arq}
+\small
+\begin{tabularx}{\textwidth}{@{}l Y Y@{}}
+\toprule
+\textbf{Critério} & \textbf{Monólito (Tudo na Wishlist API)} & \textbf{Dois Serviços (Arquitetura Adotada)} \\
+\midrule
+Coesão de domínio & Usuários, wishlists, histórico e parsing externo acoplados na mesma base & Domínio do usuário em \texttt{src/} e monitoramento de preços em \texttt{price\_service/} \\
+Falhas externas & Lentidão ou erro na CheapShark pode afetar a API principal & Falhas isoladas; wishlist degrada suavemente (\texttt{price\_status: "unavailable"}) \\
+Persistência & Tabelas misturadas, facilitando acoplamento por \texttt{JOIN} & Bancos isolados (\texttt{wishlist} e \texttt{prices}), comunicação só via HTTP/JSON \\
+Deploy e escala & Um único pacote com todas as dependências & Web Services e \texttt{requirements.txt} independentes no Render \\
+Substituição & Trocar provedor externo exige refatoração ampla & Provedor encapsulado via padrão \textit{Adapter} em \texttt{cheapshark.py} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Padrões de Comunicação e Fluxos de Integração}
+
+\subsection{REST Síncrono vs. Webhook Orientado a Eventos}
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{REST/JSON Síncrono (Wishlist API $\rightarrow$ Serviço de Preços):} utilizado em \texttt{GET /prices?game\_ids=1,2,3} porque a tela de wishlist precisa exibir os preços imediatamente ao usuário. A consulta em lote via \textit{query string} evita o problema de $N+1$ requisições HTTP (com timeout padrão de 10~s via \texttt{PRICE\_SERVICE\_TIMEOUT}). As rotas \texttt{POST /tracked} e \texttt{DELETE /tracked/\{game\_id\}} mantêm o catálogo monitorado sincronizado.
+    \item \textbf{Webhook Orientado a Eventos (Serviço de Preços $\rightarrow$ Wishlist API):} utilizado em \texttt{POST /webhooks/price-drop}. Como a queda de preço é um evento raro que nasce no Serviço de Preços durante o \texttt{POST /check}, o modelo orientado a eventos elimina a necessidade de \textit{polling} contínuo por parte da Wishlist API.
+\end{enumerate}
+
+\subsection{Por que Webhook + Outbox em vez de Mensageria (RabbitMQ/Kafka)?}
+
+Sistemas de mensageria dedicados exigiriam hospedar e manter um \textit{broker} adicional fora do Render, e o plano gratuito do Render hiberna serviços após 15 minutos sem uso, impedindo \textit{workers} consumidores contínuos em segundo plano. Para o volume esperado do sistema, o padrão \textbf{Webhook + Tabela Outbox + Idempotência} oferece entrega confiável (\textit{at-least-once}) usando apenas o banco MySQL já provisionado.
+
+\subsection{Regras de Sincronização do Ciclo de Vida}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Adição (\texttt{POST /wishlist}):} responde \texttt{201} ao usuário e dispara \texttt{POST /tracked} em background.
+    \item \textbf{Remoção (\texttt{DELETE /wishlist/\{id\}}):} consulta \texttt{controllers.game\_is\_wished}; apenas se nenhum outro usuário desejar o jogo é que envia \texttt{DELETE /tracked/\{game\_id\}}.
+    \item \textbf{Edição de título (\texttt{PUT /games/\{id\}}):} se o título mudar e o jogo estiver em alguma wishlist, reenvia \texttt{POST /tracked}. No Serviço de Preços, \texttt{track\_game} detecta \texttt{game.title != data.title}, zera \texttt{cheapshark\_id}/preços anteriores e refaz a busca na CheapShark.
+    \item \textbf{Exclusão de jogo (\texttt{DELETE /games/\{id\}}):} dispara \texttt{DELETE /tracked/\{game\_id\}} em background.
+\end{itemize}
+
+\section{Consistência, Confiabilidade e Resiliência}
+
+\subsection{Padrão \textit{Transactional Outbox} (\texttt{webhook\_outbox})}
+
+Em \texttt{price\_service/notifier.py}, todo aviso de queda de preço detectado em \texttt{POST /check} (\texttt{new\_price <= old\_price - 0.01}) é primeiro persistido na tabela \texttt{webhook\_outbox} (\texttt{notifier.enqueue}) antes de qualquer tentativa de envio HTTP. Ao executar \texttt{notifier.flush}:
+\begin{enumerate}[leftmargin=*]
+    \item Se houver avisos pendentes (\texttt{delivered\_at IS NULL} e \texttt{attempts < 10}), o método \texttt{\_wake\_wishlist\_api} faz um \texttt{GET /} na Wishlist API com \texttt{WAKE\_TIMEOUT = 90}~s para despertá-la no plano gratuito do Render.
+    \item Cada item pendente é enviado via \texttt{\_send} (\texttt{SEND\_TIMEOUT = 15}~s). Em caso de sucesso, \texttt{delivered\_at} é preenchido; em falhas HTTP, \texttt{last\_error} guarda a resposta; em falhas de conexão, o laço é interrompido (\texttt{break}) para preservar os demais itens para a próxima execução do \texttt{/check}.
+\end{enumerate}
+
+\subsection{Idempotência Ponta a Ponta e Validação Pydantic}
+
+Para impedir alertas duplicados em caso de reenvio de webhooks:
+\begin{itemize}[leftmargin=*]
+    \item Em \texttt{price\_service/main.py}, \texttt{apply\_details} gera um identificador determinístico por jogo, loja, preço e dia no formato \texttt{\{game\_id\}-\{storeID\}-\{new\_price:.2f\}-\{YYYYMMDD\}}.
+    \item A tabela \texttt{webhook\_outbox} impõe unicidade em \texttt{event\_id}, e a tabela \texttt{alerts} (\texttt{src/models.py}) define a restrição única \texttt{uq\_alert\_user\_event} sobre o par \texttt{(user\_id, event\_id)}, além da verificação prévia em \texttt{controllers.create\_alerts}.
+    \item O próprio endpoint \texttt{POST /tracked} é idempotente: chamadas repetidas para o mesmo jogo não criam duplicatas (retornando \texttt{200} quando já existe).
+    \item Todos os contratos de entrada e saída (incluindo o payload \texttt{PriceDropEvent} do webhook e a query \texttt{game\_ids} validada por regex \texttt{\textasciicircum\textbackslash d+(,\textbackslash d+)*\$}) são validados via Pydantic (\texttt{HTTP 422} em dados inválidos).
+\end{itemize}
+
+\section{Segurança, Autenticação e Autorização}
+
+Respeitando o requisito da disciplina de \textbf{não utilizar OAuth2 nem Bearer Token}, o projeto emprega duas camadas de autenticação adequadas a cada fronteira (descritas em \texttt{docs/autenticacao.md}).
+
+\subsection{Segurança de Usuários e Remoção do 2FA por SMS}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Senhas e sessão:} hash \textbf{Argon2} (\texttt{pwdlib}, com migração automática de senhas antigas em texto puro no login) e cookie \texttt{session} assinado com \texttt{SECRET\_KEY} via \texttt{itsdangerous} (\texttt{URLSafeTimedSerializer}, validade de 8 horas, flags \texttt{HttpOnly}, \texttt{SameSite=Lax} e \texttt{Secure} em produção).
+    \item \textbf{Revogação e RBAC:} o contador \texttt{session\_version} permite invalidar sessões em todos os dispositivos (\texttt{POST /auth/logout-all} e troca de senha). As dependências \texttt{require\_admin} e \texttt{require\_user} (\texttt{src/security.py}) restringem operações por papel: novos cadastros nascem sempre como \texttt{user}, um administrador não pode alterar o próprio papel, e acessos a wishlists ou alertas de terceiros retornam \texttt{404}.
+    \item \textbf{Evolução da AV2 para a AV3:} na AV2, o login exigia código OTP por SMS via Twilio Verify (\texttt{STAGE\_PENDING} e \texttt{POST /auth/verify}). Esse segundo fator foi removido na AV3 (\texttt{migrations/003\_remove\_otp.sql} opcional para limpar colunas \texttt{otp\_*}) porque a conta \textit{trial} limitava a 40 envios e apenas números pré-verificados. O campo \texttt{stage: "active"} foi mantido no cookie em \texttt{src/security.py} para invalidar sessões pendentes antigas. A proposta de login via GitHub OAuth também não foi implementada para manter total conformidade com a proibição de OAuth2.
+\end{itemize}
+
+\subsection{Autenticação entre Serviços com HMAC-SHA256}
+
+Todas as rotas internas do Serviço de Preços (exceto \texttt{GET /}) e a rota \texttt{POST /webhooks/price-drop} da Wishlist API exigem a dependência \texttt{verify\_signature} presente de forma idêntica em \texttt{src/signing.py} e \texttt{price\_service/signing.py} (arquivos duplicados propositalmente devido aos deploys independentes no Render).
+
+O emissor assina com a chave compartilhada \texttt{INTERNAL\_SECRET} a cadeia canônica:
+\begin{lstlisting}
+<X-Timestamp>\n<MÉTODO>\n<caminho?query>\n<corpo_em_bytes>
+\end{lstlisting}
+enviando os cabeçalhos \texttt{X-Timestamp} e \texttt{X-Signature: sha256=<hex>}. O receptor recusa com \texttt{HTTP 401} assinaturas ausentes, requisições com diferença temporal superior a 300 segundos (\texttt{MAX\_AGE\_SECONDS = 300}, proteção contra \textit{replay}) ou assinaturas inválidas conferidas em tempo constante via \texttt{hmac.compare\_digest}.
+
+\subsection{Segurança em Transporte}
+
+Todos os serviços no Render trafegam sobre \textbf{HTTPS}, e as conexões do SQLAlchemy com o MySQL da Aiven utilizam \textbf{TLS} validado pelo certificado CA local (\texttt{ca.pem} e \texttt{price\_service/ca.pem}).
+
+\section{Integração Externa (CheapShark) e Infraestrutura}
+
+\subsection{Escolha da CheapShark e Mitigações}
+
+A \textbf{CheapShark API v1.0} foi escolhida frente a alternativas como Steam Store API (restrita a uma única loja), IsThereAnyDeal (exige chave de API) e RAWG (não fornece preços). Para lidar com suas restrições:
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Preços apenas em USD:} o campo \texttt{currency = "USD"} é explicitado nos contratos e exibido como \texttt{US\$} no frontend.
+    \item \textbf{Header \texttt{User-Agent} e \textit{Rate Limit}:} envia \texttt{CHEAPSHARK\_USER\_AGENT} (padrão \texttt{WishlistAV3/1.0}), agrupa consultas de preços em lotes máximos de 25 IDs (\texttt{BATCH\_SIZE = 25}), limita novas buscas a \texttt{RESOLVE\_PER\_CHECK = 10} por rodada e interrompe buscas ao receber \texttt{HTTP 429} (\texttt{RateLimited}), além de prever cache em memória para \texttt{/stores} e links oficiais de redirecionamento (\texttt{https://www.cheapshark.com/redirect?dealID=...}).
+\end{itemize}
+
+\subsection{Agendamento via GitHub Actions e Deploy no Render}
+
+Como o Render gratuito hiberna Web Services após 15 minutos sem requisições e cobra por \textit{Cron Jobs} nativos, o workflow \texttt{.github/workflows/check-prices.yml} agenda a verificação a cada 6 horas (\texttt{0 */6 * * *}) e permite disparo manual (\texttt{workflow\_dispatch}). Ele desperta em paralelo ambos os serviços via \texttt{GET /} (\texttt{--max-time 120 --retry 3 --retry-all-errors}), calcula o HMAC com \texttt{openssl} e invoca \texttt{POST /check} (\texttt{--max-time 240}).
+
+\begin{table}[H]
+\centering
+\caption{Configuração dos três Web Services no Render.}
+\label{tab:render}
+\footnotesize
+\begin{tabularx}{\textwidth}{@{}l Y Y p{3.0cm}@{}}
+\toprule
+\textbf{Parâmetro} & \textbf{Wishlist API} & \textbf{Serviço de Preços} & \textbf{Frontend} \\
+\midrule
+Root Directory & \textit{(vazio)} & \texttt{price\_service} & \texttt{frontend} \\
+Build Command & \texttt{pip install -r requirements.txt} & \texttt{pip install -r requirements.txt} & \texttt{pip install -r requirements.txt} \\
+Start Command & \texttt{cd src \&\& uvicorn main:app --host 0.0.0.0 --port \$PORT} & \texttt{uvicorn main:app --host 0.0.0.0 --port \$PORT} & \texttt{streamlit run app.py --server.port \$PORT --server.address 0.0.0.0} \\
+Env Vars & \texttt{DB\_*}, \texttt{DB\_NAME=wishlist}, \texttt{SECRET\_KEY}, \texttt{INTERNAL\_SECRET}, \texttt{PRICE\_SERVICE\_URL} & \texttt{DB\_*}, \texttt{DB\_NAME=prices}, \texttt{INTERNAL\_SECRET}, \texttt{WISHLIST\_API\_URL}, \texttt{CHEAPSHARK\_USER\_AGENT} & \texttt{API\_URL} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Modelagem de Dados e Contratos de API}
+
+\begin{table}[H]
+\centering
+\caption{Resumo das tabelas nos dois bancos de dados isolados (MySQL Aiven).}
+\label{tab:tabelas}
+\small
+\begin{tabularx}{\textwidth}{@{}l l l Y@{}}
+\toprule
+\textbf{Banco} & \textbf{Tabela} & \textbf{Serviço} & \textbf{Finalidade e Principais Campos} \\
+\midrule
+\texttt{wishlist} & \texttt{users} & Wishlist API & Contas, hash Argon2, \texttt{role} (\texttt{admin}/\texttt{user}), \texttt{session\_version}. \\
+\texttt{wishlist} & \texttt{games} & Wishlist API & Catálogo: \texttt{id}, \texttt{title}, \texttt{genre}, \texttt{platform}, \texttt{release\_date}. \\
+\texttt{wishlist} & \texttt{wishlist} & Wishlist API & Associação \texttt{user\_id} $\leftrightarrow$ \texttt{game\_id}. \\
+\texttt{wishlist} & \texttt{alerts} & Wishlist API & Alertas por usuário com \texttt{UniqueConstraint(user\_id, event\_id)}, preços em USD, \texttt{store}, \texttt{deal\_url}. \\
+\midrule
+\texttt{prices} & \texttt{tracked\_games} & Serviço de Preços & Espelho por \texttt{game\_id} (PK sem autoincrement), \texttt{cheapshark\_id}, \texttt{current\_price}, \texttt{cheapest\_ever}, \texttt{last\_checked\_at}. \\
+\texttt{prices} & \texttt{price\_history} & Serviço de Preços & Série histórica de variações (\texttt{price}, \texttt{normal\_price}, \texttt{store\_id}, \texttt{checked\_at}). \\
+\texttt{prices} & \texttt{webhook\_outbox} & Serviço de Preços & Fila persistente de entrega (\texttt{event\_id} único, \texttt{payload}, \texttt{attempts}, \texttt{delivered\_at}). \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Principais endpoints da Wishlist API e do Serviço de Preços.}
+\label{tab:endpoints}
+\footnotesize
+\begin{tabularx}{\textwidth}{@{}l >{\raggedright\arraybackslash}p{4.8cm} >{\raggedright\arraybackslash}p{2.3cm} Y@{}}
+\toprule
+\textbf{Serviço} & \textbf{Método e Rota} & \textbf{Autorização} & \textbf{Descrição} \\
+\midrule
+Wishlist & \texttt{POST /auth/login}, \texttt{GET /auth/me}, \texttt{POST /auth/logout(-all)} & Público / Logado & Autenticação por cookie assinado e revogação global. \\
+Wishlist & \texttt{POST /users}, \texttt{GET/PUT/DELETE /users/\{id\}}, \texttt{PATCH /users/\{id\}/role} & Público / Próprio / Admin & Gestão de contas e promoção de papéis. \\
+Wishlist & \texttt{GET /games(/\{id\})}, \texttt{POST/PUT/DELETE /games(/\{id\})} & Público / Admin & Catálogo público e curadoria com sincronismo no Serviço de Preços. \\
+Wishlist & \texttt{POST/GET/DELETE /wishlist(/\{id\})} & \texttt{User} & Lista pessoal enriquecida com \texttt{price} e \texttt{price\_status}. \\
+Wishlist & \texttt{GET/DELETE /alerts(/\{id\})} & \texttt{User} & Leitura e dispensa de alertas de queda de preço. \\
+Wishlist & \texttt{POST /webhooks/price-drop} & HMAC & Recebe aviso do Serviço de Preços e grava alertas idempotentes. \\
+\midrule
+Preços & \texttt{GET /} & Público & Health check e despertar do serviço no Render. \\
+Preços & \texttt{POST /tracked}, \texttt{DELETE /tracked/\{game\_id\}} & HMAC & Inicia ou encerra monitoramento de um jogo. \\
+Preços & \texttt{GET /prices?game\_ids=...}, \texttt{GET /prices/\{game\_id\}(/history)} & HMAC & Consulta em lote, preço atual/menor histórico e série temporal. \\
+Preços & \texttt{POST /check} & HMAC & Checa preços na CheapShark em lotes de 25 e escoa \texttt{webhook\_outbox}. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\noindent\textbf{Exemplo de payload enviado pelo webhook \texttt{POST /webhooks/price-drop}:}
+\begin{lstlisting}
+{
+  "event_id": "1-23-14.96-20261125",
+  "game_id": 1,
+  "title": "Red Dead Redemption 2",
+  "old_price": 59.99,
+  "new_price": 14.96,
+  "normal_price": 59.99,
+  "savings_percent": 75.1,
+  "store": "GameBillet",
+  "deal_url": "https://www.cheapshark.com/redirect?dealID=...",
+  "currency": "USD",
+  "detected_at": "2026-11-25T20:39:14"
+}
+\end{lstlisting}
+
+\section{Estado Atual da Implementação, Limitações e Próximos Passos}
+
+\subsection{Estado Atual (Commit \texttt{5e1ab7a})}
+
+Toda a infraestrutura distribuída da AV3 encontra-se implementada e integrada no repositório: os dois serviços FastAPI (\texttt{src/} e \texttt{price\_service/}), o cliente REST resiliente (\texttt{src/price\_client.py}), a assinatura \texttt{HMAC-SHA256} (\texttt{signing.py}), o \textit{outbox} (\texttt{price\_service/notifier.py}), o receptor de webhook idempotente (\texttt{src/routers/alerts.py}), a remoção do fluxo de SMS, o frontend atualizado em Streamlit (\texttt{frontend/app.py}) e o agendamento via GitHub Actions. Resta concluir a implementação das três funções marcadas com \texttt{TODO} em \texttt{price\_service/cheapshark.py} (\texttt{search\_game}, \texttt{get\_games} em lotes de 25 e \texttt{store\_name} com cache em memória) e versionar os testes automatizados no repositório.
+
+\subsection{Limitações Conhecidas e Evoluções Futuras}
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{\textit{Cold start} no Render gratuito:} serviços dormem após 15 minutos sem tráfego e levam até 1 minuto para acordar (mitigado por \textit{wake-up} no workflow e em \texttt{\_wake\_wishlist\_api}).
+    \item \textbf{Moeda única em USD:} retorno nativo da CheapShark; evolução futura inclui conversão USD$\rightarrow$BRL via API de câmbio com cache diário.
+    \item \textbf{Migrações manuais via SQL:} substituição futura dos scripts em \texttt{migrations/} pelo \textbf{Alembic}.
+    \item \textbf{\textit{Rate limit} no login por senha:} adição de bloqueio progressivo contra tentativas repetidas em \texttt{POST /auth/login}.
+    \item \textbf{Workflows agendados no GitHub:} o GitHub desativa gatilhos \texttt{schedule} após 60 dias sem commits no repositório.
+    \item \textbf{Testes automatizados no CI:} versionar suíte \texttt{pytest} (com SQLite em memória e \textit{mocks} HTTP para CheapShark e chamadas HMAC) rodando automaticamente no GitHub Actions.
+\end{enumerate}
+
+\end{document}
