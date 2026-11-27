@@ -124,6 +124,14 @@ GitHub Actions & \texttt{.github/workflows/} & Agendador externo que desperta os
     \draw[arr] (ps.east) -- node[midway, above=3pt, font=\scriptsize, align=center] {REST GET\\ (lotes de 25)} (cs.west);
 \end{tikzpicture}%
 }
+
+\vspace{4pt}
+{\scriptsize
+\textbf{Legenda (Deploy):}\;\;
+\tikz[baseline=-0.3ex]\draw[draw=primaryblue, thick, fill=boxfill, rounded corners=1pt] (0,0) rectangle (0.26,0.26);~\textbf{Render} (Web Services próprios)\quad
+\tikz[baseline=-0.3ex]\draw[draw=green!50!black, thick, fill=dbfill, rounded corners=1pt] (0,0) rectangle (0.26,0.26);~\textbf{Aiven} (MySQL gerenciado)\quad
+\tikz[baseline=-0.3ex]\draw[draw=orange!70!black, thick, fill=extfill, rounded corners=1pt] (0,0) rectangle (0.26,0.26);~\textbf{Externos} (GitHub / CheapShark)
+}
 \caption{Arquitetura distribuída adotada na AV3 e fronteiras de integração.}
 \label{fig:arquitetura}
 \end{figure}
